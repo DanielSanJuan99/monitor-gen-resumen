@@ -1,0 +1,102 @@
+-- ============================================================
+-- Script DDL para Oracle Autonomous Database
+-- Base de datos: BDBUSESRED
+-- Microservicio: monitor-gen-resumen
+-- ============================================================
+
+-- ============================
+-- Secuencias
+-- ============================
+CREATE SEQUENCE SEQ_UBICACIONES_VEHICULOS START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE SEQ_HORARIOS_VEHICULOS START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE SEQ_RESUMEN_DIARIO START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+-- ============================
+-- Tabla: UBICACIONES_VEHICULOS
+-- Almacena las ubicaciones de los vehiculos recibidas desde Kafka
+-- ============================
+CREATE TABLE UBICACIONES_VEHICULOS (
+    ID              NUMBER(19)      DEFAULT SEQ_UBICACIONES_VEHICULOS.NEXTVAL NOT NULL,
+    VEHICULO_ID     VARCHAR2(50)    NOT NULL,
+    LATITUD         NUMBER(10,7)    NOT NULL,
+    LONGITUD        NUMBER(10,7)    NOT NULL,
+    RUTA            VARCHAR2(100),
+    FECHA_REGISTRO  TIMESTAMP       NOT NULL,
+    CONSTRAINT PK_UBICACIONES_VEHICULOS PRIMARY KEY (ID)
+);
+
+-- Indices para consultas frecuentes
+CREATE INDEX IDX_UBI_VEHICULO_ID ON UBICACIONES_VEHICULOS (VEHICULO_ID);
+CREATE INDEX IDX_UBI_FECHA_REGISTRO ON UBICACIONES_VEHICULOS (FECHA_REGISTRO);
+CREATE INDEX IDX_UBI_RUTA ON UBICACIONES_VEHICULOS (RUTA);
+
+COMMENT ON TABLE UBICACIONES_VEHICULOS IS 'Registro de ubicaciones GPS de vehiculos del transporte publico';
+COMMENT ON COLUMN UBICACIONES_VEHICULOS.VEHICULO_ID IS 'Identificador unico del vehiculo (ej: BUS-001)';
+COMMENT ON COLUMN UBICACIONES_VEHICULOS.LATITUD IS 'Latitud GPS del vehiculo';
+COMMENT ON COLUMN UBICACIONES_VEHICULOS.LONGITUD IS 'Longitud GPS del vehiculo';
+COMMENT ON COLUMN UBICACIONES_VEHICULOS.RUTA IS 'Ruta asignada al vehiculo (ej: Ruta 101)';
+COMMENT ON COLUMN UBICACIONES_VEHICULOS.FECHA_REGISTRO IS 'Fecha y hora del registro de ubicacion';
+
+-- ============================
+-- Tabla: HORARIOS_VEHICULOS
+-- Almacena los horarios estimados recibidos desde Kafka
+-- ============================
+CREATE TABLE HORARIOS_VEHICULOS (
+    ID                  NUMBER(19)      DEFAULT SEQ_HORARIOS_VEHICULOS.NEXTVAL NOT NULL,
+    VEHICULO_ID         VARCHAR2(50)    NOT NULL,
+    RUTA                VARCHAR2(100),
+    PARADA_NOMBRE       VARCHAR2(200),
+    HORA_LLEGADA        VARCHAR2(50),
+    HORA_ESTIMADA_SALIDA VARCHAR2(50),
+    LATITUD             NUMBER(10,7),
+    LONGITUD            NUMBER(10,7),
+    FECHA_REGISTRO      TIMESTAMP       NOT NULL,
+    CONSTRAINT PK_HORARIOS_VEHICULOS PRIMARY KEY (ID)
+);
+
+-- Indices para consultas frecuentes
+CREATE INDEX IDX_HOR_VEHICULO_ID ON HORARIOS_VEHICULOS (VEHICULO_ID);
+CREATE INDEX IDX_HOR_FECHA_REGISTRO ON HORARIOS_VEHICULOS (FECHA_REGISTRO);
+CREATE INDEX IDX_HOR_RUTA ON HORARIOS_VEHICULOS (RUTA);
+
+COMMENT ON TABLE HORARIOS_VEHICULOS IS 'Registro de horarios estimados de llegada y salida en paradas';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.VEHICULO_ID IS 'Identificador unico del vehiculo';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.RUTA IS 'Ruta del vehiculo';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.PARADA_NOMBRE IS 'Nombre de la parada de destino';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.HORA_LLEGADA IS 'Hora estimada de llegada a la parada';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.HORA_ESTIMADA_SALIDA IS 'Hora estimada de salida de la parada';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.LATITUD IS 'Latitud de la parada';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.LONGITUD IS 'Longitud de la parada';
+COMMENT ON COLUMN HORARIOS_VEHICULOS.FECHA_REGISTRO IS 'Fecha y hora del registro';
+
+-- ============================
+-- Tabla: RESUMEN_DIARIO
+-- Almacena resumenes diarios generados por el scheduler
+-- ============================
+CREATE TABLE RESUMEN_DIARIO (
+    ID                      NUMBER(19)      DEFAULT SEQ_RESUMEN_DIARIO.NEXTVAL NOT NULL,
+    VEHICULO_ID             VARCHAR2(50)    NOT NULL,
+    RUTA                    VARCHAR2(100),
+    TOTAL_UBICACIONES       NUMBER(10)      DEFAULT 0,
+    TOTAL_PARADAS_VISITADAS NUMBER(10)      DEFAULT 0,
+    PARADAS_VISITADAS       VARCHAR2(2000),
+    HORARIOS_REGISTRADOS    VARCHAR2(2000),
+    FECHA_RESUMEN           DATE            NOT NULL,
+    FECHA_GENERACION        TIMESTAMP       NOT NULL,
+    CONSTRAINT PK_RESUMEN_DIARIO PRIMARY KEY (ID)
+);
+
+-- Indices para consultas frecuentes
+CREATE INDEX IDX_RES_VEHICULO_ID ON RESUMEN_DIARIO (VEHICULO_ID);
+CREATE INDEX IDX_RES_FECHA_RESUMEN ON RESUMEN_DIARIO (FECHA_RESUMEN);
+CREATE INDEX IDX_RES_RUTA ON RESUMEN_DIARIO (RUTA);
+
+COMMENT ON TABLE RESUMEN_DIARIO IS 'Resumen diario de actividad por vehiculo y ruta';
+COMMENT ON COLUMN RESUMEN_DIARIO.VEHICULO_ID IS 'Identificador del vehiculo';
+COMMENT ON COLUMN RESUMEN_DIARIO.RUTA IS 'Ruta del vehiculo';
+COMMENT ON COLUMN RESUMEN_DIARIO.TOTAL_UBICACIONES IS 'Total de ubicaciones registradas en el dia';
+COMMENT ON COLUMN RESUMEN_DIARIO.TOTAL_PARADAS_VISITADAS IS 'Total de paradas visitadas en el dia';
+COMMENT ON COLUMN RESUMEN_DIARIO.PARADAS_VISITADAS IS 'Lista de paradas visitadas (JSON)';
+COMMENT ON COLUMN RESUMEN_DIARIO.HORARIOS_REGISTRADOS IS 'Lista de horarios registrados (JSON)';
+COMMENT ON COLUMN RESUMEN_DIARIO.FECHA_RESUMEN IS 'Fecha del resumen';
+COMMENT ON COLUMN RESUMEN_DIARIO.FECHA_GENERACION IS 'Fecha y hora de generacion del resumen';

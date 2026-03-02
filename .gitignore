@@ -11,3 +11,7 @@ target/
 .idea/
 *.iml
 .DS_Store
+
+# Variables de entorno con credenciales
+.env
+*.env
