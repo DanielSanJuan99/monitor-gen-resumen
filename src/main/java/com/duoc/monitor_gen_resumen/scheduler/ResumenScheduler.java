@@ -15,14 +15,13 @@ public class ResumenScheduler {
     private ResumenService resumenService;
 
     /**
-     * Genera el resumen diario todos los dias a las 23:55.
-     * Resume las ubicaciones y horarios del dia, mostrando
-     * los lugares visitados y horarios de llegada.
+     * Genera el resumen cada 2 minutos.
+     * Resume las ubicaciones y horarios del dia, generando un archivo JSON.
      */
-    @Scheduled(cron = "0 55 23 * * *")
-    public void generarResumenAlFinalDelDia() {
-        System.out.println("=== [SCHEDULER] Generando resumen diario automatico ===");
-        resumenService.generarResumenDiario(LocalDate.now());
-        System.out.println("=== [SCHEDULER] Resumen diario completado ===");
+    @Scheduled(cron = "0 */2 * * * *")
+    public void generarResumenPeriodico() {
+        System.out.println("=== [SCHEDULER] Generando resumen periodico (cada 2 minutos) ===");
+        resumenService.generarResumenDiarioConJson(LocalDate.now());
+        System.out.println("=== [SCHEDULER] Resumen periodico completado ===");
     }
 }
