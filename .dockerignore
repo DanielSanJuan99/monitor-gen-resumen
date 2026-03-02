@@ -1,0 +1,8 @@
+target/
+.git/
+.gitignore
+*.md
+.settings/
+.project
+.classpath
+.factorypath
