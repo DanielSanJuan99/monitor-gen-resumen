@@ -1,6 +1,6 @@
 # monitor-gen-resumen
 
-Microservicio de monitorización que consume ambos topics de Kafka (ubicaciones y horarios), persiste los datos en Oracle Autonomous Database, genera resúmenes diarios agrupados por vehículo cada 2 minutos y los exporta como archivos JSON consultables vía API REST.
+Microservicio de monitorización que consume ambos topics de Kafka (ubicaciones y horarios), persiste los datos en Oracle Autonomous Database, genera resúmenes diarios agrupados por vehículo cada 5 minutos y los exporta como archivos JSON consultables vía API REST.
 
 ## Tecnologías
 
@@ -11,7 +11,7 @@ Microservicio de monitorización que consume ambos topics de Kafka (ubicaciones 
 - Oracle Autonomous Database (OCI)
 - HikariCP
 - Jackson (serialización JSON)
-- Docker
+- Docker (imagen multi-plataforma: linux/amd64, linux/arm64)
 
 ## Puerto
 
@@ -26,7 +26,7 @@ Microservicio de monitorización que consume ambos topics de Kafka (ubicaciones 
 | `ubicaciones_vehiculos` | `monitor-ubicaciones-group` | `monitorUbicacionListener` |
 | `horarios` | `monitor-horarios-group` | `monitorHorarioListener` |
 
-Ambos con ACK manual (`MANUAL_IMMEDIATE`) y `auto.offset.reset=earliest`.
+Ambos con ACK manual (`MANUAL_IMMEDIATE`), `auto.offset.reset=earliest` y **StringDeserializer** para valores (parseo manual con Jackson).
 
 ## Conexión a Oracle
 
@@ -108,10 +108,80 @@ Secuencia: `SEQ_RESUMEN_DIARIO`
 
 ## Generación automática de resúmenes
 
-- **CRON:** `0 */2 * * * *` (cada 2 minutos)
+- **CRON:** `0 */5 * * * *` (cada 5 minutos)
 - Agrupa ubicaciones y horarios del día por `vehiculoId`
 - Calcula totales por vehículo y persiste en `RESUMEN_DIARIO`
 - Exporta un archivo JSON en el directorio configurable (`resumenes-json/`)
+
+## Tiempos CRON configurados (todos los microservicios)
+
+| Microservicio | Acción | Expresión CRON | Frecuencia |
+|---------------|--------|----------------|------------|
+| `prod-ub-cron-kafka` | Envía 2 ubicaciones simuladas a Kafka | `0 */1 * * * *` | Cada 1 minuto |
+| `cons-ub-prod-hor-kafka` | Consume ubicaciones y produce horarios | Tiempo real (listener) | Inmediato al recibir |
+| `monitor-gen-resumen` | Consume ubicaciones y horarios, guarda en Oracle | Tiempo real (listener) | Inmediato al recibir |
+| `monitor-gen-resumen` | Genera resumen diario y exporta JSON | `0 */5 * * * *` | Cada 5 minutos |
+
+## Cómo consultar los resúmenes
+
+### 1. Listar documentos JSON disponibles
+
+```bash
+curl http://localhost:8083/api/resumenes/documentos
+```
+
+Respuesta ejemplo:
+```json
+["resumen_2026-03-02.json", "resumen_2026-03-01.json"]
+```
+
+### 2. Ver el contenido de un documento JSON
+
+```bash
+curl http://localhost:8083/api/resumenes/documentos/resumen_2026-03-02.json
+```
+
+### 3. Consultar resúmenes desde la base de datos
+
+```bash
+# Todos los resúmenes
+curl http://localhost:8083/api/resumenes
+
+# Por fecha específica (formato yyyy-MM-dd)
+curl http://localhost:8083/api/resumenes/fecha/2026-03-02
+
+# Por ID
+curl http://localhost:8083/api/resumenes/1
+```
+
+### 4. Generar un resumen manualmente (sin esperar el CRON)
+
+```bash
+curl -X POST http://localhost:8083/api/resumenes/generar-json
+```
+
+> **Nota:** En despliegue EC2, reemplazar `localhost` por la IP pública de la instancia (ej: `54.225.56.236`).
+
+## Flujo completo del sistema
+
+```
+[prod-ub-cron-kafka]          [cons-ub-prod-hor-kafka]          [monitor-gen-resumen]
+       |                              |                                |
+  CRON cada 1 min                     |                                |
+  Genera 2 ubicaciones                |                                |
+       |                              |                                |
+       +---> topic: ubicaciones_vehiculos --->  Consume ubicación      |
+       |                              |         Genera horario         |
+       |                              |              |                 |
+       |                              +---> topic: horarios            |
+       |                                                               |
+       +---> topic: ubicaciones_vehiculos ----------------------> Consume y guarda en Oracle
+                                      +---> topic: horarios -----> Consume y guarda en Oracle
+                                                                       |
+                                                                  CRON cada 5 min
+                                                                  Genera resumen diario
+                                                                  Exporta JSON
+```
 
 ## Endpoints REST
 
@@ -152,14 +222,36 @@ Secuencia: `SEQ_RESUMEN_DIARIO`
 
 ## Ejecución
 
-### Con Docker Compose (recomendado)
+> **IMPORTANTE:** Este microservicio requiere la contraseña de Oracle Autonomous Database.
+> La variable `ORACLE_DB_PASSWORD` **debe estar definida** antes de levantar el contenedor.
+> Si no se proporciona, el servicio fallará con `ORA-01017: invalid username/password`.
 
-Desde el directorio raíz del proyecto:
+### Con el script `start-all.sh` (recomendado)
+
+El script acepta la contraseña como argumento:
 
 ```bash
-export ORACLE_DB_PASSWORD="tu_password"
-docker compose build monitor-gen-resumen
+./start-all.sh tu_password_oracle
+```
+
+O puedes exportar la variable antes de ejecutar:
+
+```bash
+export ORACLE_DB_PASSWORD="tu_password_oracle"
+./start-all.sh
+```
+
+### Con Docker Compose
+
+```bash
+export ORACLE_DB_PASSWORD="tu_password_oracle"
 docker compose up -d monitor-gen-resumen
+```
+
+O en una sola línea:
+
+```bash
+ORACLE_DB_PASSWORD="tu_password_oracle" docker compose up -d monitor-gen-resumen
 ```
 
 ### Con Docker directamente
@@ -167,7 +259,7 @@ docker compose up -d monitor-gen-resumen
 ```bash
 docker build -t monitor-gen-resumen .
 docker run -p 8083:8083 \
-  -e SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092 \
+  -e SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092 \
   -e SPRING_DATASOURCE_URL=jdbc:oracle:thin:@bdbusesred_medium?TNS_ADMIN=/wallet \
   -e SPRING_DATASOURCE_USERNAME=ADMIN \
   -e SPRING_DATASOURCE_PASSWORD=tu_password \
@@ -176,19 +268,25 @@ docker run -p 8083:8083 \
   monitor-gen-resumen
 ```
 
+### Imagen Docker Hub
+
+```bash
+docker pull dimmox/monitor-gen-resumen:latest
+```
+
 ### Local con Maven
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Requiere Kafka en `localhost:29092,localhost:39092,localhost:49092` y wallet configurado localmente.
+Requiere Kafka en `localhost:29092` y wallet configurado localmente.
 
 ## Variables de entorno
 
 | Variable | Descripción | Valor por defecto |
 |----------|-------------|-------------------|
-| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | Brokers Kafka | `localhost:29092,localhost:39092,localhost:49092` |
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | Brokers Kafka | `kafka-1:9092` |
 | `SPRING_DATASOURCE_URL` | URL JDBC Oracle | `jdbc:oracle:thin:@bdbusesred_medium?TNS_ADMIN=/wallet` |
 | `SPRING_DATASOURCE_USERNAME` | Usuario Oracle | `ADMIN` |
 | `SPRING_DATASOURCE_PASSWORD` | Contraseña Oracle | — (requerida) |

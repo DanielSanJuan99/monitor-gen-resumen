@@ -50,7 +50,7 @@ public class ResumenController {
         Map<String, Object> respuesta = new java.util.LinkedHashMap<>();
         respuesta.put("totalDocumentos", documentos.size());
         respuesta.put("mensaje", documentos.isEmpty()
-                ? "No hay documentos JSON generados aun. El scheduler genera uno cada 2 minutos."
+                ? "No hay documentos JSON generados aun. El scheduler genera uno cada 5 minutos."
                 : "Documentos JSON disponibles. Use la URL de cada documento para ver su contenido.");
         respuesta.put("documentos", documentos);
 
